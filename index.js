@@ -8,6 +8,9 @@ app.use(express.json());
 const IMPORT_API_KEY = process.env.IMPORT_API_KEY;
 const PROSPECT_BASE = "https://crm-odata-v1.prospect365.com";
 const PROSPECT_PAT = process.env.PROSPECT_PAT;
+// New: Operating company code (required by Prospect Divisions)
+const OPERATING_COMPANY_CODE =
+  process.env.OPERATING_COMPANY_CODE || "MAIN"; // you can override this in Render
 
 // Safety logs
 if (!IMPORT_API_KEY) {
@@ -20,6 +23,7 @@ if (!PROSPECT_PAT) {
     "WARNING: PROSPECT_PAT is not set. Calls to Prospect CRM will fail."
   );
 }
+console.log("Using OPERATING_COMPANY_CODE:", OPERATING_COMPANY_CODE);
 
 // Axios client for Prospect CRM
 const prospectClient = axios.create({
@@ -52,11 +56,12 @@ async function findDivisionByName(name) {
   }
 }
 
-// Create a new Division/Company with minimal fields
+// Create a new Division/Company with minimal required fields
 async function createDivision(lead) {
   const payload = {
     Name: lead.company_name,
-    StatusFlag: "A" // Active
+    StatusFlag: "A", // Active
+    OperatingCompanyCode: OPERATING_COMPANY_CODE
   };
 
   console.log("Creating Division with payload:", payload);
@@ -105,7 +110,8 @@ app.get("/", (req, res) => {
     ok: true,
     message: "lead-importer is running",
     hasImportApiKey: !!IMPORT_API_KEY,
-    hasProspectPat: !!PROSPECT_PAT
+    hasProspectPat: !!PROSPECT_PAT,
+    operatingCompanyCode: OPERATING_COMPANY_CODE
   });
 });
 
