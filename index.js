@@ -12,10 +12,14 @@ const PROSPECT_PAT = process.env.PROSPECT_PAT;
 
 // Safety: log if env vars are missing (but don't crash the app)
 if (!IMPORT_API_KEY) {
-  console.warn("WARNING: IMPORT_API_KEY is not set. /leads endpoint will always return Unauthorized.");
+  console.warn(
+    "WARNING: IMPORT_API_KEY is not set. /leads endpoint will always return Unauthorized."
+  );
 }
 if (!PROSPECT_PAT) {
-  console.warn("WARNING: PROSPECT_PAT is not set. Calls to Prospect CRM will fail.");
+  console.warn(
+    "WARNING: PROSPECT_PAT is not set. Calls to Prospect CRM will fail."
+  );
 }
 
 // Axios client for Prospect CRM
@@ -29,20 +33,25 @@ const prospectClient = axios.create({
 
 // --- Helper functions to talk to Prospect CRM ---
 
-// Find an existing Division/Company by Name and Postcode
-async function findDivisionByNameAndPostcode(name, postcode) {
+// Find an existing Division/Company by Name only
+async function findDivisionByName(name) {
   if (!name) return null;
 
   const safeName = name.replace(/'/g, "''");
-  const safePostcode = postcode ? postcode.replace(/'/g, "''") : null;
-
-  let filter = `Name eq '${safeName}'`;
-  if (safePostcode) filter += ` and Postcode eq '${safePostcode}'`;
-
+  const filter = `Name eq '${safeName}'`;
   const url = `/Divisions?$top=1&$filter=${encodeURIComponent(filter)}`;
 
-  const { data } = await prospectClient.get(url);
-  return data.value && data.value[0] ? data.value[0] : null;
+  try {
+    const { data } = await prospectClient.get(url);
+    return data.value && data.value[0] ? data.value[0] : null;
+  } catch (err) {
+    console.error(
+      "Error searching for division by name:",
+      err.response?.data || err.message
+    );
+    // If the search fails for any reason, just act as if it doesn't exist
+    return null;
+  }
 }
 
 // Create a new Division/Company from the lead data
@@ -55,10 +64,12 @@ async function createDivision(lead) {
     Address2: lead.address_line2 || null,
     Town: lead.town || null,
     County: lead.county_region || null,
-    Postcode: lead.postcode || null,
+    // Postcode omitted for now until we confirm exact OData field name
     Country: lead.country || null,
     StatusFlag: "A" // Active
   };
+
+  console.log("Creating Division with payload:", payload);
 
   const { data } = await prospectClient.post("/Divisions", payload);
   return data;
@@ -79,6 +90,8 @@ async function createContact(lead, division) {
     DivisionId: division.DivisionId,
     StatusFlag: "A"
   };
+
+  console.log("Creating Contact with payload:", payload);
 
   const { data } = await prospectClient.post("/Contacts", payload);
   return data;
@@ -131,16 +144,13 @@ app.post("/leads", checkApiKey, async (req, res) => {
     const results = [];
 
     for (const lead of leads) {
-      if (!lead.company_name || !lead.postcode) {
-        console.warn("Lead missing company_name or postcode, skipping", lead);
+      if (!lead.company_name) {
+        console.warn("Lead missing company_name, skipping", lead);
         continue;
       }
 
-      // 1. Find or create the Division/Company
-      let division = await findDivisionByNameAndPostcode(
-        lead.company_name,
-        lead.postcode
-      );
+      // 1. Find or create the Division/Company (by Name only)
+      let division = await findDivisionByName(lead.company_name);
 
       if (!division) {
         division = await createDivision(lead);
