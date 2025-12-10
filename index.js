@@ -30,19 +30,17 @@ const prospectClient = axios.create({
 });
 
 // --- Helper: create a Contact only ---
-// We assume the company/division already exists in Prospect
-// and we are given a valid DivisionId (division_id) in the lead.
+// We are NOT linking to a company yet – just creating contacts.
 async function createContact(lead) {
   const c = lead.primary_contact || {};
 
   const payload = {
-    // Minimal & safe fields based on the info Prospect gave you:
+    // Fields Prospect explicitly listed in their docs:
     Forename: c.first_name || null,
     Surname: c.last_name || null,
     Email: c.email || lead.email_main || null,
-    StatusFlag: "A",
-    // Link to existing company/division
-    DivisionId: lead.division_id
+    StatusFlag: "A"
+    // No DivisionId / Company link for now
   };
 
   console.log("Creating Contact with payload:", payload);
@@ -70,7 +68,7 @@ function checkApiKey(req, res, next) {
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    message: "lead-importer is running (contacts-only mode)",
+    message: "lead-importer is running (contacts-only, no company link yet)",
     hasImportApiKey: !!IMPORT_API_KEY,
     hasProspectPat: !!PROSPECT_PAT
   });
@@ -96,12 +94,12 @@ app.post("/leads", checkApiKey, async (req, res) => {
     const errors = [];
 
     for (const lead of leads) {
-      // We now REQUIRE division_id to be provided
-      if (!lead.division_id) {
-        console.warn("Lead missing division_id, skipping", lead);
+      const c = lead.primary_contact || {};
+      if (!c.email && !lead.email_main) {
+        console.warn("Lead missing contact email, skipping", lead);
         errors.push({
           company_name: lead.company_name || null,
-          reason: "Missing division_id (existing Prospect Company/Division ID required)"
+          reason: "Missing contact email"
         });
         continue;
       }
@@ -110,8 +108,8 @@ app.post("/leads", checkApiKey, async (req, res) => {
         const contact = await createContact(lead);
         results.push({
           company_name: lead.company_name || null,
-          division_id: lead.division_id,
-          contact_id: contact.ContactId
+          contact_id: contact.ContactId || null,
+          email: contact.Email || c.email || lead.email_main || null
         });
       } catch (err) {
         console.error(
@@ -120,7 +118,6 @@ app.post("/leads", checkApiKey, async (req, res) => {
         );
         errors.push({
           company_name: lead.company_name || null,
-          division_id: lead.division_id,
           error: err.message,
           details: err.response?.data || null
         });
@@ -150,5 +147,5 @@ app.post("/leads", checkApiKey, async (req, res) => {
 // --- Start server ---
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`lead-importer (contacts-only) running on port ${port}`);
+  console.log(`lead-importer (contacts-only, no company link) running on port ${port}`);
 });
