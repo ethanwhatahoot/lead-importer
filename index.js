@@ -5,12 +5,11 @@ const app = express();
 app.use(express.json());
 
 // --- CONFIG ---
-// These come from environment variables (set on Render)
 const IMPORT_API_KEY = process.env.IMPORT_API_KEY;
 const PROSPECT_BASE = "https://crm-odata-v1.prospect365.com";
 const PROSPECT_PAT = process.env.PROSPECT_PAT;
 
-// Safety: log if env vars are missing (but don't crash the app)
+// Safety logs
 if (!IMPORT_API_KEY) {
   console.warn(
     "WARNING: IMPORT_API_KEY is not set. /leads endpoint will always return Unauthorized."
@@ -31,7 +30,7 @@ const prospectClient = axios.create({
   }
 });
 
-// --- Helper functions to talk to Prospect CRM ---
+// --- Helper functions ---
 
 // Find an existing Division/Company by Name only
 async function findDivisionByName(name) {
@@ -49,23 +48,14 @@ async function findDivisionByName(name) {
       "Error searching for division by name:",
       err.response?.data || err.message
     );
-    // If the search fails for any reason, just act as if it doesn't exist
     return null;
   }
 }
 
-// Create a new Division/Company from the lead data
+// Create a new Division/Company with minimal fields
 async function createDivision(lead) {
   const payload = {
     Name: lead.company_name,
-    Telephone: lead.phone_main || null,
-    Website: lead.website_url || null,
-    Address1: lead.address_line1 || null,
-    Address2: lead.address_line2 || null,
-    Town: lead.town || null,
-    County: lead.county_region || null,
-    // Postcode omitted for now until we confirm exact OData field name
-    Country: lead.country || null,
     StatusFlag: "A" // Active
   };
 
@@ -75,18 +65,13 @@ async function createDivision(lead) {
   return data;
 }
 
-// Create a contact linked to a Division
+// Create a Contact with minimal fields
 async function createContact(lead, division) {
   const c = lead.primary_contact || {};
 
   const payload = {
-    Forename: c.first_name || null,
-    Surname: c.last_name || null,
-    ContactName: c.full_name || null,
+    ContactName: c.full_name || lead.company_name || "Unknown",
     Email: c.email || lead.email_main || null,
-    Telephone: c.phone_direct || lead.phone_main || null,
-    Mobile: c.phone_mobile || null,
-    Position: c.job_title || null,
     DivisionId: division.DivisionId,
     StatusFlag: "A"
   };
@@ -97,7 +82,7 @@ async function createContact(lead, division) {
   return data;
 }
 
-// --- Simple API key auth so only you/ChatGPT can call /leads ---
+// --- API key auth middleware ---
 
 function checkApiKey(req, res, next) {
   const auth = req.headers.authorization || "";
@@ -113,7 +98,7 @@ function checkApiKey(req, res, next) {
   next();
 }
 
-// --- Health check (root) ---
+// --- Health check ---
 
 app.get("/", (req, res) => {
   res.json({
@@ -124,7 +109,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// --- The endpoint ChatGPT (or you) will call to import leads ---
+// --- Main import endpoint ---
 
 app.post("/leads", checkApiKey, async (req, res) => {
   try {
@@ -149,7 +134,7 @@ app.post("/leads", checkApiKey, async (req, res) => {
         continue;
       }
 
-      // 1. Find or create the Division/Company (by Name only)
+      // 1. Find or create the Division/Company
       let division = await findDivisionByName(lead.company_name);
 
       if (!division) {
@@ -183,7 +168,7 @@ app.post("/leads", checkApiKey, async (req, res) => {
   }
 });
 
-// --- Start the server ---
+// --- Start server ---
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
