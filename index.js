@@ -8,9 +8,10 @@ app.use(express.json());
 const IMPORT_API_KEY = process.env.IMPORT_API_KEY;
 const PROSPECT_BASE = "https://crm-odata-v1.prospect365.com";
 const PROSPECT_PAT = process.env.PROSPECT_PAT;
-// New: Operating company code (required by Prospect Divisions)
+
+// Required by your Prospect instance:
 const OPERATING_COMPANY_CODE =
-  process.env.OPERATING_COMPANY_CODE || "MAIN"; // you can override this in Render
+  process.env.OPERATING_COMPANY_CODE || "MAIN"; // override in Render if needed
 
 // Safety logs
 if (!IMPORT_API_KEY) {
@@ -56,12 +57,14 @@ async function findDivisionByName(name) {
   }
 }
 
-// Create a new Division/Company with minimal required fields
+// Create a new Division/Company with required fields
 async function createDivision(lead) {
   const payload = {
     Name: lead.company_name,
     StatusFlag: "A", // Active
-    OperatingCompanyCode: OPERATING_COMPANY_CODE
+    OperatingCompanyCode: OPERATING_COMPANY_CODE,
+    // This is what marks it as Lead vs Customer etc.
+    CompanyGroupCode: lead.company_group_code || "Lead"
   };
 
   console.log("Creating Division with payload:", payload);
