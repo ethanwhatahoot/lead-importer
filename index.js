@@ -9,6 +9,9 @@ const IMPORT_API_KEY = process.env.IMPORT_API_KEY;
 const PROSPECT_BASE = "https://crm-odata-v1.prospect365.com";
 const PROSPECT_PAT = process.env.PROSPECT_PAT;
 
+// Hard-coded valid RoleCode from your system
+const DEFAULT_ROLE_CODE = "DECISN";
+
 if (!IMPORT_API_KEY) {
   console.warn(
     "WARNING: IMPORT_API_KEY is not set. /leads endpoint will always return Unauthorized."
@@ -19,6 +22,7 @@ if (!PROSPECT_PAT) {
     "WARNING: PROSPECT_PAT is not set. Calls to Prospect CRM will fail."
   );
 }
+console.log("Using hard-coded DEFAULT_ROLE_CODE:", DEFAULT_ROLE_CODE);
 
 // Axios client for Prospect CRM
 const prospectClient = axios.create({
@@ -30,17 +34,17 @@ const prospectClient = axios.create({
 });
 
 // --- Helper: create a Contact only ---
-// We are NOT linking to a company yet – just creating contacts.
 async function createContact(lead) {
   const c = lead.primary_contact || {};
 
+  const roleCode = lead.role_code || DEFAULT_ROLE_CODE;
+
   const payload = {
-    // Fields Prospect explicitly listed in their docs:
     Forename: c.first_name || null,
     Surname: c.last_name || null,
     Email: c.email || lead.email_main || null,
-    StatusFlag: "A"
-    // No DivisionId / Company link for now
+    StatusFlag: "A",
+    RoleCode: roleCode
   };
 
   console.log("Creating Contact with payload:", payload);
@@ -68,7 +72,8 @@ function checkApiKey(req, res, next) {
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    message: "lead-importer is running (contacts-only, no company link yet)",
+    message:
+      "lead-importer is running (contacts-only, hard-coded RoleCode DECISN, no company link)",
     hasImportApiKey: !!IMPORT_API_KEY,
     hasProspectPat: !!PROSPECT_PAT
   });
@@ -95,7 +100,9 @@ app.post("/leads", checkApiKey, async (req, res) => {
 
     for (const lead of leads) {
       const c = lead.primary_contact || {};
-      if (!c.email && !lead.email_main) {
+      const email = c.email || lead.email_main;
+
+      if (!email) {
         console.warn("Lead missing contact email, skipping", lead);
         errors.push({
           company_name: lead.company_name || null,
@@ -109,7 +116,8 @@ app.post("/leads", checkApiKey, async (req, res) => {
         results.push({
           company_name: lead.company_name || null,
           contact_id: contact.ContactId || null,
-          email: contact.Email || c.email || lead.email_main || null
+          email: contact.Email || email,
+          role_code: contact.RoleCode || DEFAULT_ROLE_CODE
         });
       } catch (err) {
         console.error(
@@ -135,17 +143,4 @@ app.post("/leads", checkApiKey, async (req, res) => {
       errors
     });
   } catch (err) {
-    console.error("Error in /leads handler:", err.response?.data || err.message);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      details: err.response?.data || null
-    });
-  }
-});
-
-// --- Start server ---
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`lead-importer (contacts-only, no company link) running on port ${port}`);
-});
+    console.er
